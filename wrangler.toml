@@ -1,0 +1,26 @@
+name = "mpesa-stk"
+main = "src/index.ts"
+compatibility_date = "2026-07-22"
+
+[vars]
+MPESA_ENVIRONMENT = "sandbox"
+MPESA_BUSINESS_SHORT_CODE = "174379"
+MPESA_TRANSACTION_TYPE = "CustomerPayBillOnline"
+WORKER_BASE_URL = " https://mpesa-stk.mpesa-stk.workers.dev"
+SUPABASE_URL = "https://smsgowvwgbvspdyjwbrh.supabase.co"
+
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

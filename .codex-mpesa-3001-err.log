@@ -1,0 +1,10 @@
+ValidationError: The Express 'trust proxy' setting is true, which allows anyone to trivially bypass IP-based rate limiting. See https://express-rate-limit.github.io/ERR_ERL_PERMISSIVE_TRUST_PROXY/ for more information.
+    at Object.trustProxy (C:\Users\Winnie Shekinah\Desktop\COWRIE\saccoapp\mpesa-stk\node_modules\express-rate-limit\dist\index.cjs:167:13)
+    at wrappedValidations.<computed> [as trustProxy] (C:\Users\Winnie Shekinah\Desktop\COWRIE\saccoapp\mpesa-stk\node_modules\express-rate-limit\dist\index.cjs:397:22)
+    at Object.keyGenerator (C:\Users\Winnie Shekinah\Desktop\COWRIE\saccoapp\mpesa-stk\node_modules\express-rate-limit\dist\index.cjs:657:20)
+    at C:\Users\Winnie Shekinah\Desktop\COWRIE\saccoapp\mpesa-stk\node_modules\express-rate-limit\dist\index.cjs:710:32
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\Users\Winnie Shekinah\Desktop\COWRIE\saccoapp\mpesa-stk\node_modules\express-rate-limit\dist\index.cjs:691:5 {
+  code: 'ERR_ERL_PERMISSIVE_TRUST_PROXY',
+  help: 'https://express-rate-limit.github.io/ERR_ERL_PERMISSIVE_TRUST_PROXY/'
+}

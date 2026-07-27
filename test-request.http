@@ -1,0 +1,9 @@
+POST http://localhost:8787/api/mpesa/stk-push
+Content-Type: application/json
+
+{
+  "amount": 1,
+  "phoneNumber": "254713863322",
+  "accountReference": "Test",
+  "transactionDesc": "Test"
+}

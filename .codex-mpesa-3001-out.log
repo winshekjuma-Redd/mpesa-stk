@@ -1,0 +1,2 @@
+M-Pesa STK server running on port 3001
+{"level":"info","message":{"country":"unknown","duration_ms":44,"ip":"::1","method":"GET","status":200,"type":"request","url":"/health","userAgent":"Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8875"},"timestamp":"2026-07-23T13:33:44.627Z"}
