@@ -168,6 +168,16 @@ async function insertTransaction(env, transaction) {
         throw new Error(data?.message || data?.hint || 'Supabase transaction insert failed');
     return Array.isArray(data) ? data[0] : data;
 }
+async function findTransactionByReference(env, reference) {
+    const value = encodeURIComponent(reference);
+    const response = await supabaseFetch(env, `Transactions?select=id,reference,internalReference&or=(reference.eq.${value},internalReference.eq.${value})&limit=1`, {
+        method: 'GET',
+    });
+    const data = await response.json().catch(() => []);
+    if (!response.ok)
+        throw new Error(data?.message || data?.hint || 'Supabase transaction lookup failed');
+    return Array.isArray(data) ? data[0] : null;
+}
 async function updateTransaction(env, matchValue, updates) {
     const value = encodeURIComponent(matchValue);
     const response = await supabaseFetch(env, `Transactions?or=(reference.eq.${value},internalReference.eq.${value})`, {
@@ -205,6 +215,10 @@ async function createTransaction(request, env, path, headers) {
     }
     const accountReference = body.accountReference || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
     const description = body.transactionDesc || body.description || category.slice(0, 13);
+    const existingReference = await findTransactionByReference(env, accountReference);
+    if (existingReference) {
+        return json({ error: 'Duplicate transaction reference', reference: accountReference }, 409, headers);
+    }
     const result = await stkPush(env, {
         phoneNumber: formattedPhone,
         amount,
@@ -218,7 +232,9 @@ async function createTransaction(request, env, path, headers) {
         return json({ error: result.CustomerMessage || result.ResponseDescription || 'STK Push failed', mpesa: result }, 400, headers);
     }
     const reference = result.CheckoutRequestID || result.MerchantRequestID || body.reference || accountReference;
+    const now = new Date().toISOString();
     const transaction = await insertTransaction(env, {
+        id: crypto.randomUUID(),
         memberId: body.memberId || null,
         loanId: body.loanId || null,
         type: body.type || 'DEPOSIT',
@@ -231,6 +247,8 @@ async function createTransaction(request, env, path, headers) {
         kcbEndpoint: body.kcbEndpoint || 'mpesa-stk',
         internalReference: body.internalReference || accountReference,
         promptChannel: body.promptChannel || 'MPESA_STK',
+        createdAt: now,
+        updatedAt: now,
     });
     return json({
         success: true,

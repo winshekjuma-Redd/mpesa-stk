@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.root = exports.info = exports.health = exports.testAuth = exports.createTransaction = void 0;
+const crypto_1 = __importDefault(require("crypto"));
 const supabase_1 = require("../services/supabase");
 const mpesa_1 = require("../services/mpesa");
 const helpers_1 = require("../utils/helpers");
@@ -40,6 +44,18 @@ const createTransaction = async (req, res) => {
         if (!callbackUrl) {
             return res.status(500).json({ error: 'Missing callback URL. Set MPESA_CALLBACK_URL or BACKEND_BASE_URL.' });
         }
+        const { data: existingReference, error: referenceLookupError } = await supabase_1.supabase
+            .from('Transactions')
+            .select('id,reference,internalReference')
+            .or(`reference.eq.${accountReference},internalReference.eq.${accountReference}`)
+            .maybeSingle();
+        if (referenceLookupError) {
+            logger_1.logger.error('Supabase reference lookup error', referenceLookupError);
+            return res.status(500).json({ error: referenceLookupError.message });
+        }
+        if (existingReference) {
+            return res.status(409).json({ error: 'Duplicate transaction reference', reference: accountReference });
+        }
         const stkResult = await (0, mpesa_1.stkPush)({
             phoneNumber: formattedPhone,
             amount,
@@ -53,7 +69,9 @@ const createTransaction = async (req, res) => {
             return res.status(400).json({ error: stkResult.CustomerMessage || stkResult.ResponseDescription || 'STK Push failed', mpesa: stkResult });
         }
         const reference = stkResult.CheckoutRequestID || stkResult.MerchantRequestID || body.reference || accountReference;
+        const now = new Date().toISOString();
         const transaction = {
+            id: crypto_1.default.randomUUID(),
             memberId: body.memberId || null,
             loanId: body.loanId || null,
             type: body.type || 'DEPOSIT',
@@ -66,6 +84,8 @@ const createTransaction = async (req, res) => {
             kcbEndpoint: body.kcbEndpoint || 'mpesa-stk',
             internalReference: body.internalReference || accountReference,
             promptChannel: body.promptChannel || 'MPESA_STK',
+            createdAt: now,
+            updatedAt: now,
         };
         const { data, error } = await supabase_1.supabase
             .from('Transactions')

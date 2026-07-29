@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { supabase } from '../services/supabase';
 import { getToken, stkPush } from '../services/mpesa';
 import { formatPhone, getCallbackUrl, pathToCategory } from '../utils/helpers';
@@ -46,6 +47,21 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Missing callback URL. Set MPESA_CALLBACK_URL or BACKEND_BASE_URL.' });
     }
 
+    const { data: existingReference, error: referenceLookupError } = await supabase
+      .from('Transactions')
+      .select('id,reference,internalReference')
+      .or(`reference.eq.${accountReference},internalReference.eq.${accountReference}`)
+      .maybeSingle();
+
+    if (referenceLookupError) {
+      logger.error('Supabase reference lookup error', referenceLookupError);
+      return res.status(500).json({ error: referenceLookupError.message });
+    }
+
+    if (existingReference) {
+      return res.status(409).json({ error: 'Duplicate transaction reference', reference: accountReference });
+    }
+
     const stkResult = await stkPush({
       phoneNumber: formattedPhone,
       amount,
@@ -61,7 +77,9 @@ export const createTransaction = async (req: Request, res: Response) => {
     }
 
     const reference = stkResult.CheckoutRequestID || stkResult.MerchantRequestID || body.reference || accountReference;
+    const now = new Date().toISOString();
     const transaction = {
+      id: crypto.randomUUID(),
       memberId: body.memberId || null,
       loanId: body.loanId || null,
       type: body.type || 'DEPOSIT',
@@ -74,6 +92,8 @@ export const createTransaction = async (req: Request, res: Response) => {
       kcbEndpoint: body.kcbEndpoint || 'mpesa-stk',
       internalReference: body.internalReference || accountReference,
       promptChannel: body.promptChannel || 'MPESA_STK',
+      createdAt: now,
+      updatedAt: now,
     };
 
     const { data, error } = await supabase
