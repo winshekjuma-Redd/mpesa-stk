@@ -19,7 +19,7 @@ exports.env = {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY,
     ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGINS ||
-        'http://localhost:3000,https://sacco-backend-backend-env.up.railway.app').split(',').map((s) => s.trim()).filter(Boolean),
+        'http://localhost:3000,https://endpoint-unknotted-wind.ngrok-free.dev').split(',').map((s) => s.trim()).filter(Boolean),
     ALLOWED_IPS: process.env.ALLOWED_IPS?.split(',').map((s) => s.trim()).filter(Boolean) || [],
     ALLOWED_COUNTRIES: process.env.ALLOWED_COUNTRIES?.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) || [],
     API_KEY_FOR_BACKEND: process.env.API_KEY_FOR_BACKEND,
