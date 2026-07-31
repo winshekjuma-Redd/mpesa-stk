@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { supabase } from '../services/supabase';
+import { findTransactionByReference, insertTransaction } from '../services/firebase';
 import { getToken, stkPush } from '../services/mpesa';
 import { formatPhone, getCallbackUrl, pathToCategory } from '../utils/helpers';
 import { rateLimit } from '../services/rateLimitStore';
@@ -47,16 +47,7 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Missing callback URL. Set MPESA_CALLBACK_URL or BACKEND_BASE_URL.' });
     }
 
-    const { data: existingReference, error: referenceLookupError } = await supabase
-      .from('Transactions')
-      .select('id,reference,internalReference')
-      .or(`reference.eq.${accountReference},internalReference.eq.${accountReference}`)
-      .maybeSingle();
-
-    if (referenceLookupError) {
-      logger.error('Supabase reference lookup error', referenceLookupError);
-      return res.status(500).json({ error: referenceLookupError.message });
-    }
+    const existingReference = await findTransactionByReference(accountReference);
 
     if (existingReference) {
       return res.status(409).json({ error: 'Duplicate transaction reference', reference: accountReference });
@@ -96,16 +87,7 @@ export const createTransaction = async (req: Request, res: Response) => {
       updatedAt: now,
     };
 
-    const { data, error } = await supabase
-      .from('Transactions')
-      .insert(transaction)
-      .select()
-      .single();
-
-    if (error) {
-      logger.error('Supabase insert error', error);
-      return res.status(500).json({ error: error.message, mpesa: stkResult });
-    }
+    const data = await insertTransaction(transaction);
 
     res.json({
       success: true,

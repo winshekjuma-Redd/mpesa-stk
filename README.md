@@ -32,19 +32,21 @@ MPESA_BUSINESS_SHORT_CODE=174379
 MPESA_TRANSACTION_TYPE=CustomerPayBillOnline
 MPESA_PASSKEY=
 WORKER_BASE_URL=https://mpesa-stk.your-subdomain.workers.dev
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIRESTORE_TRANSACTIONS_COLLECTION=Transactions
 ```
 
-`SUPABASE_KEY` and `SUPABASE_SERVICE_KEY` are also accepted if your `.env` already uses either of those names.
+Create the Firebase values from a Firebase service account. Keep `FIREBASE_PRIVATE_KEY` on one line with escaped `\n` newlines.
 
-Sync the secret values from `.env` into Cloudflare. At minimum, keep `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY`, and your Supabase service key as Cloudflare secrets:
+Sync the secret values from `.env` into Cloudflare. At minimum, keep `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` as Cloudflare secrets:
 
 ```sh
 npx wrangler secret bulk .env
 ```
 
-Keep non-secret defaults in `wrangler.toml`, especially `MPESA_ENVIRONMENT`, `MPESA_BUSINESS_SHORT_CODE`, `MPESA_TRANSACTION_TYPE`, `WORKER_BASE_URL`, and `SUPABASE_URL`.
+Keep non-secret defaults in `wrangler.toml`, especially `MPESA_ENVIRONMENT`, `MPESA_BUSINESS_SHORT_CODE`, `MPESA_TRANSACTION_TYPE`, `WORKER_BASE_URL`, and `FIRESTORE_TRANSACTIONS_COLLECTION`.
 
 ## Run With Wrangler
 

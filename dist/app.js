@@ -46,7 +46,7 @@ const security_1 = require("./middleware/security");
 const routes = __importStar(require("./routes"));
 const callback_1 = __importDefault(require("./routes/callback"));
 const app = (0, express_1.default)();
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
         if (!origin || env_1.env.ALLOWED_ORIGINS.includes(origin)) {

@@ -11,8 +11,10 @@ export const env = {
   MPESA_PASSKEY: process.env.MPESA_PASSKEY!,
   MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL,
   BACKEND_BASE_URL: process.env.BACKEND_BASE_URL,
-  SUPABASE_URL: process.env.SUPABASE_URL!,
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY!,
+  FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID!,
+  FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL!,
+  FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')!,
+  FIRESTORE_TRANSACTIONS_COLLECTION: process.env.FIRESTORE_TRANSACTIONS_COLLECTION || 'Transactions',
   ALLOWED_ORIGINS: (
     process.env.ALLOWED_ORIGINS ||
     'http://localhost:3000,https://endpoint-unknotted-wind.ngrok-free.dev'

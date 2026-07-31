@@ -8,13 +8,15 @@ export interface Env {
   MPESA_CALLBACK_URL?: string;
   WORKER_BASE_URL?: string;
   BACKEND_BASE_URL?: string;
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
-  SUPABASE_SERVICE_KEY?: string;
-  SUPABASE_KEY?: string;
+  FIREBASE_PROJECT_ID: string;
+  FIREBASE_CLIENT_EMAIL: string;
+  FIREBASE_PRIVATE_KEY: string;
+  FIRESTORE_TRANSACTIONS_COLLECTION?: string;
   API_KEY_FOR_BACKEND?: string;
   ALLOWED_ORIGINS?: string;
 }
+
+let firebaseTokenCache: { token?: string; expiresAt?: number } = {};
 
 const MPESA_ENDPOINTS: Record<string, { baseUrl: string; oauthPath: string; stkPushPath: string }> = {
   sandbox: {
@@ -86,8 +88,6 @@ const mpesaConfig = (env: Env) => {
   const environment = (env.MPESA_ENVIRONMENT || 'sandbox').toLowerCase();
   return MPESA_ENDPOINTS[environment] || MPESA_ENDPOINTS.sandbox;
 };
-
-const serviceKey = (env: Env) => env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || env.SUPABASE_KEY || '';
 
 const formatPhone = (phone: unknown) => {
   let value = String(phone || '').replace(/\D/g, '');
@@ -173,56 +173,170 @@ async function stkPush(env: Env, params: Record<string, any>) {
   return data;
 }
 
-async function supabaseFetch(env: Env, path: string, init: RequestInit) {
-  const key = serviceKey(env);
-  if (!env.SUPABASE_URL || !key) throw new Error('Missing Supabase URL or service key');
+const base64Url = (value: string | ArrayBuffer) => {
+  const binary = typeof value === 'string'
+    ? value
+    : String.fromCharCode(...new Uint8Array(value));
+  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+};
 
-  return fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${path}`, {
+const pemToArrayBuffer = (pem: string) => {
+  const base64 = pem.replace(/\\n/g, '\n').replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\s/g, '');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes.buffer;
+};
+
+async function getFirebaseAccessToken(env: Env) {
+  if (firebaseTokenCache.token && firebaseTokenCache.expiresAt && firebaseTokenCache.expiresAt > Date.now() + 60000) {
+    return firebaseTokenCache.token;
+  }
+
+  if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
+    throw new Error('Missing Firebase service account credentials');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const unsignedJwt = [
+    base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })),
+    base64Url(JSON.stringify({
+      iss: env.FIREBASE_CLIENT_EMAIL,
+      scope: 'https://www.googleapis.com/auth/datastore',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    })),
+  ].join('.');
+
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(env.FIREBASE_PRIVATE_KEY),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsignedJwt));
+  const assertion = `${unsignedJwt}.${base64Url(signature)}`;
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  });
+
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
+    throw new Error(data.error_description || data.error || 'Failed to authenticate with Firebase');
+  }
+
+  firebaseTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000,
+  };
+  return data.access_token as string;
+}
+
+const transactionsCollection = (env: Env) => env.FIRESTORE_TRANSACTIONS_COLLECTION || 'Transactions';
+const firestoreBaseUrl = (env: Env) =>
+  `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+
+const documentIdFromName = (name?: string) => name?.split('/').pop();
+
+const encodeFirestoreValue = (value: any): any => {
+  if (value === null || typeof value === 'undefined') return { nullValue: null };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (typeof value === 'number') return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(encodeFirestoreValue) } };
+  if (typeof value === 'object') return { mapValue: { fields: encodeFirestoreFields(value) } };
+  return { stringValue: String(value) };
+};
+
+const decodeFirestoreValue = (value: any): any => {
+  if (!value || typeof value !== 'object') return value;
+  if ('nullValue' in value) return null;
+  if ('stringValue' in value) return value.stringValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('booleanValue' in value) return Boolean(value.booleanValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('arrayValue' in value) return (value.arrayValue.values || []).map(decodeFirestoreValue);
+  if ('mapValue' in value) return decodeFirestoreFields(value.mapValue.fields || {});
+  return value;
+};
+
+const encodeFirestoreFields = (data: Record<string, any>) =>
+  Object.fromEntries(Object.entries(data).map(([key, value]) => [key, encodeFirestoreValue(value)]));
+
+const decodeFirestoreFields = (fields: Record<string, any>) =>
+  Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, decodeFirestoreValue(value)]));
+
+const decodeFirestoreDocument = (document: any) => {
+  if (!document) return null;
+  const data = decodeFirestoreFields(document.fields || {});
+  return { id: data.id || documentIdFromName(document.name), ...data };
+};
+
+async function firestoreRequest(env: Env, path: string, init: RequestInit = {}) {
+  const token = await getFirebaseAccessToken(env);
+  const response = await fetch(`${firestoreBaseUrl(env)}${path}`, {
     ...init,
     headers: {
-      apikey: key,
-      authorization: `Bearer ${key}`,
+      authorization: `Bearer ${token}`,
       'content-type': 'application/json',
-      prefer: 'return=representation',
       ...(init.headers || {}),
     },
   });
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || 'Firestore request failed');
+  return data;
+}
+
+async function runTransactionQuery(env: Env, field: string, value: string) {
+  const data = await firestoreRequest(env, ':runQuery', {
+    method: 'POST',
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: transactionsCollection(env) }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: field },
+            op: 'EQUAL',
+            value: encodeFirestoreValue(value),
+          },
+        },
+        limit: 1,
+      },
+    }),
+  });
+
+  return decodeFirestoreDocument(data.find((entry: any) => entry.document)?.document);
 }
 
 async function insertTransaction(env: Env, transaction: Record<string, any>) {
-  const response = await supabaseFetch(env, 'Transactions', {
+  await firestoreRequest(env, `/${transactionsCollection(env)}?documentId=${encodeURIComponent(transaction.id)}`, {
     method: 'POST',
-    body: JSON.stringify(transaction),
+    body: JSON.stringify({ fields: encodeFirestoreFields(transaction) }),
   });
-
-  const data: any = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(data?.message || data?.hint || 'Supabase transaction insert failed');
-  return Array.isArray(data) ? data[0] : data;
+  return transaction;
 }
 
 async function findTransactionByReference(env: Env, reference: string) {
-  const value = encodeURIComponent(reference);
-  const response = await supabaseFetch(env, `Transactions?select=id,reference,internalReference&or=(reference.eq.${value},internalReference.eq.${value})&limit=1`, {
-    method: 'GET',
-  });
-
-  const data: any = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(data?.message || data?.hint || 'Supabase transaction lookup failed');
-  return Array.isArray(data) ? data[0] : null;
+  return await runTransactionQuery(env, 'reference', reference) || await runTransactionQuery(env, 'internalReference', reference);
 }
 
 async function updateTransaction(env: Env, matchValue: string, updates: Record<string, any>) {
-  const value = encodeURIComponent(matchValue);
-  const response = await supabaseFetch(env, `Transactions?or=(reference.eq.${value},internalReference.eq.${value})`, {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
-    headers: { prefer: 'return=minimal' },
-  });
+  const transaction = await findTransactionByReference(env, matchValue);
+  if (!transaction?.id) return;
 
-  if (!response.ok) {
-    const data: any = await response.json().catch(() => ({}));
-    console.error('Supabase callback update error', data);
-  }
+  const updateMask = Object.keys(updates).map((key) => `updateMask.fieldPaths=${encodeURIComponent(key)}`).join('&');
+  await firestoreRequest(env, `/${transactionsCollection(env)}/${encodeURIComponent(transaction.id)}?${updateMask}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ fields: encodeFirestoreFields(updates) }),
+  });
 }
 
 async function createTransaction(request: Request, env: Env, path: string, headers: HeadersInit) {

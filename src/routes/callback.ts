@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../services/supabase';
+import { updateTransactionByReference } from '../services/firebase';
 import { logger } from '../middleware/logger';
 
 export default async function callback(req: Request, res: Response) {
@@ -29,12 +29,7 @@ export default async function callback(req: Request, res: Response) {
 
     const matchValue = CheckoutRequestID || MerchantRequestID;
     if (matchValue) {
-      const { error } = await supabase
-        .from('Transactions')
-        .update(updates)
-        .or(`reference.eq.${matchValue},internalReference.eq.${matchValue}`);
-
-      if (error) logger.error('Supabase callback update error', error);
+      await updateTransactionByReference(matchValue, updates);
     }
 
     res.json({ ResultCode: 0, ResultDesc: 'Accepted' });

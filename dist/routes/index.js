@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.root = exports.info = exports.health = exports.testAuth = exports.createTransaction = void 0;
 const crypto_1 = __importDefault(require("crypto"));
-const supabase_1 = require("../services/supabase");
+const firebase_1 = require("../services/firebase");
 const mpesa_1 = require("../services/mpesa");
 const helpers_1 = require("../utils/helpers");
 const rateLimitStore_1 = require("../services/rateLimitStore");
@@ -44,15 +44,7 @@ const createTransaction = async (req, res) => {
         if (!callbackUrl) {
             return res.status(500).json({ error: 'Missing callback URL. Set MPESA_CALLBACK_URL or BACKEND_BASE_URL.' });
         }
-        const { data: existingReference, error: referenceLookupError } = await supabase_1.supabase
-            .from('Transactions')
-            .select('id,reference,internalReference')
-            .or(`reference.eq.${accountReference},internalReference.eq.${accountReference}`)
-            .maybeSingle();
-        if (referenceLookupError) {
-            logger_1.logger.error('Supabase reference lookup error', referenceLookupError);
-            return res.status(500).json({ error: referenceLookupError.message });
-        }
+        const existingReference = await (0, firebase_1.findTransactionByReference)(accountReference);
         if (existingReference) {
             return res.status(409).json({ error: 'Duplicate transaction reference', reference: accountReference });
         }
@@ -87,15 +79,7 @@ const createTransaction = async (req, res) => {
             createdAt: now,
             updatedAt: now,
         };
-        const { data, error } = await supabase_1.supabase
-            .from('Transactions')
-            .insert(transaction)
-            .select()
-            .single();
-        if (error) {
-            logger_1.logger.error('Supabase insert error', error);
-            return res.status(500).json({ error: error.message, mpesa: stkResult });
-        }
+        const data = await (0, firebase_1.insertTransaction)(transaction);
         res.json({
             success: true,
             merchantRequestId: stkResult.MerchantRequestID,

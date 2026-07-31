@@ -6,8 +6,9 @@ compatibility_date = "2026-07-22"
 MPESA_ENVIRONMENT = "sandbox"
 MPESA_BUSINESS_SHORT_CODE = "174379"
 MPESA_TRANSACTION_TYPE = "CustomerPayBillOnline"
-WORKER_BASE_URL = " https://mpesa-stk.mpesa-stk.workers.dev"
-SUPABASE_URL = "https://smsgowvwgbvspdyjwbrh.supabase.co"
+WORKER_BASE_URL = "https://mpesa-stk.mpesa-stk.workers.dev"
+FIREBASE_PROJECT_ID = "sacco-eff75"
+FIRESTORE_TRANSACTIONS_COLLECTION = "Transactions"
 
 
 [observability]
@@ -19,8 +20,3 @@ enabled = true
 head_sampling_rate = 1
 persist = true
 invocation_logs = true
-
-[observability.traces]
-enabled = false
-persist = true
-head_sampling_rate = 1

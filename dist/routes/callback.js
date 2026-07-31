@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = callback;
-const supabase_1 = require("../services/supabase");
+const firebase_1 = require("../services/firebase");
 const logger_1 = require("../middleware/logger");
 async function callback(req, res) {
     try {
@@ -26,12 +26,7 @@ async function callback(req, res) {
             updates.amount = Number(amount);
         const matchValue = CheckoutRequestID || MerchantRequestID;
         if (matchValue) {
-            const { error } = await supabase_1.supabase
-                .from('Transactions')
-                .update(updates)
-                .or(`reference.eq.${matchValue},internalReference.eq.${matchValue}`);
-            if (error)
-                logger_1.logger.error('Supabase callback update error', error);
+            await (0, firebase_1.updateTransactionByReference)(matchValue, updates);
         }
         res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
     }
