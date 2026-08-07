@@ -87,5 +87,5 @@ Example:
 ```sh
 curl -X POST http://localhost:8787/api/transactions \
   -H "Content-Type: application/json" \
-  -d "{\"amount\":1,\"phoneNumber\":\"254713863322\",\"type\":\"DEPOSIT\",\"paymentCategory\":\"savings\",\"internalReference\":\"Test\",\"description\":\"Savings contribution\"}"
+  -d "{\"amount\":1,\"phoneNumber\":\"\",\"type\":\"DEPOSIT\",\"paymentCategory\":\"savings\",\"internalReference\":\"Test\",\"description\":\"Savings contribution\"}"
 ```
