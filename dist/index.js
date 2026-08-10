@@ -318,11 +318,12 @@ async function createTransaction(request, env, path, headers) {
     if (!Number.isInteger(amount) || amount <= 0) {
         return json({ error: 'Amount must be a positive integer' }, 400, headers);
     }
-    const accountReference = body.accountReference || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+    const accountReference = body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+    const uniqueReference = body.internalReference || body.internal_reference || body.reference || `${accountReference}-${Date.now()}`;
     const description = body.transactionDesc || body.description || category.slice(0, 13);
-    const existingReference = await findTransactionByReference(env, accountReference);
+    const existingReference = await findTransactionByReference(env, uniqueReference);
     if (existingReference) {
-        return json({ error: 'Duplicate transaction reference', reference: accountReference }, 409, headers);
+        return json({ error: 'Duplicate transaction reference', reference: uniqueReference }, 409, headers);
     }
     const result = await stkPush(env, {
         phoneNumber: formattedPhone,
@@ -350,7 +351,7 @@ async function createTransaction(request, env, path, headers) {
         description,
         paymentCategory: body.paymentCategory || body.category || category,
         kcbEndpoint: body.kcbEndpoint || 'mpesa-stk',
-        internalReference: body.internalReference || accountReference,
+        internalReference: uniqueReference,
         promptChannel: body.promptChannel || 'MPESA_STK',
         createdAt: now,
         updatedAt: now,

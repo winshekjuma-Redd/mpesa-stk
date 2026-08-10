@@ -39,7 +39,8 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(429).json({ error: 'Too many requests from this IP.' });
     }
 
-    const accountReference = body.accountReference || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+    const accountReference = body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+    const uniqueReference = body.internalReference || body.internal_reference || body.reference || `${accountReference}-${Date.now()}`;
     const description = body.transactionDesc || body.description || category.slice(0, 13);
     const callbackUrl = getCallbackUrl(body.callbackUrl || body.CallBackURL);
 
@@ -47,10 +48,10 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Missing callback URL. Set MPESA_CALLBACK_URL or BACKEND_BASE_URL.' });
     }
 
-    const existingReference = await findTransactionByReference(accountReference);
+    const existingReference = await findTransactionByReference(uniqueReference);
 
     if (existingReference) {
-      return res.status(409).json({ error: 'Duplicate transaction reference', reference: accountReference });
+      return res.status(409).json({ error: 'Duplicate transaction reference', reference: uniqueReference });
     }
 
     const stkResult = await stkPush({
@@ -81,7 +82,7 @@ export const createTransaction = async (req: Request, res: Response) => {
       description,
       paymentCategory: body.paymentCategory || body.category || category,
       kcbEndpoint: body.kcbEndpoint || 'mpesa-stk',
-      internalReference: body.internalReference || accountReference,
+      internalReference: uniqueReference,
       promptChannel: body.promptChannel || 'MPESA_STK',
       createdAt: now,
       updatedAt: now,
