@@ -14,6 +14,7 @@ export interface Env {
   FIRESTORE_TRANSACTIONS_COLLECTION?: string;
   API_KEY_FOR_BACKEND?: string;
   ALLOWED_ORIGINS?: string;
+  MPESA_HTTP_TIMEOUT_MS?: string;
 }
 
 let firebaseTokenCache: { token?: string; expiresAt?: number } = {};
@@ -119,6 +120,8 @@ const callbackUrl = (request: Request, env: Env, override?: string) => {
   return `${new URL(request.url).origin}/callback`;
 };
 
+const withTimeout = (env: Env) => AbortSignal.timeout(Number(env.MPESA_HTTP_TIMEOUT_MS || 45000));
+
 async function getToken(env: Env) {
   if (!env.MPESA_CONSUMER_KEY || !env.MPESA_CONSUMER_SECRET) {
     throw new Error('Missing MPESA_CONSUMER_KEY or MPESA_CONSUMER_SECRET');
@@ -128,6 +131,7 @@ async function getToken(env: Env) {
   const credentials = btoa(`${env.MPESA_CONSUMER_KEY}:${env.MPESA_CONSUMER_SECRET}`);
   const response = await fetch(`${mpesa.baseUrl}${mpesa.oauthPath}`, {
     headers: { authorization: `Basic ${credentials}` },
+    signal: withTimeout(env),
   });
 
   const data: any = await response.json().catch(() => ({}));
@@ -166,6 +170,7 @@ async function stkPush(env: Env, params: Record<string, any>) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(payload),
+    signal: withTimeout(env),
   });
 
   const data: any = await response.json().catch(() => ({}));
@@ -339,6 +344,33 @@ async function updateTransaction(env: Env, matchValue: string, updates: Record<s
   });
 }
 
+const shortApplicationCode = (value: unknown) => {
+  const raw = String(value || '');
+  const digits = raw.replace(/\D/g, '');
+  if (digits) return digits.slice(-5);
+  let hash = 0;
+  for (const char of raw) hash = ((hash * 31) + char.charCodeAt(0)) % 100000;
+  return String(hash || 1).padStart(5, '0');
+};
+
+const isRegistrationPayment = (body: Record<string, any>, category: string) => {
+  const tokens = [
+    body?.paymentCategory,
+    body?.category,
+    body?.type,
+    body?.transactionType,
+    category,
+  ].map((item) => String(item || '').toLowerCase());
+  return Boolean(body?.applicationId || tokens.some((token) => token.includes('registration') || token.includes('membership')));
+};
+
+const resolveAccountReference = (body: Record<string, any>, category: string) => {
+  if (isRegistrationPayment(body, category) && body?.applicationId) {
+    return `AYEDOSSACCO-${shortApplicationCode(body.applicationId)}`;
+  }
+  return body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+};
+
 async function createTransaction(request: Request, env: Env, path: string, headers: HeadersInit) {
   if (env.API_KEY_FOR_BACKEND) {
     const apiKey = request.headers.get('x-api-key') || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
@@ -365,7 +397,7 @@ async function createTransaction(request: Request, env: Env, path: string, heade
     return json({ error: 'Amount must be a positive integer' }, 400, headers);
   }
 
-  const accountReference = body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+  const accountReference = resolveAccountReference(body, category);
   const uniqueReference = body.internalReference || body.internal_reference || body.reference || `${accountReference}-${Date.now()}`;
   const description = body.transactionDesc || body.description || category.slice(0, 13);
   const existingReference = await findTransactionByReference(env, uniqueReference);

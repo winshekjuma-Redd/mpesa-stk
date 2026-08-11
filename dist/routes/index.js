@@ -10,6 +10,32 @@ const mpesa_1 = require("../services/mpesa");
 const helpers_1 = require("../utils/helpers");
 const rateLimitStore_1 = require("../services/rateLimitStore");
 const logger_1 = require("../middleware/logger");
+const shortApplicationCode = (value) => {
+    const raw = String(value || '');
+    const digits = raw.replace(/\D/g, '');
+    if (digits)
+        return digits.slice(-5);
+    let hash = 0;
+    for (const char of raw)
+        hash = ((hash * 31) + char.charCodeAt(0)) % 100000;
+    return String(hash || 1).padStart(5, '0');
+};
+const isRegistrationPayment = (body, category) => {
+    const tokens = [
+        body?.paymentCategory,
+        body?.category,
+        body?.type,
+        body?.transactionType,
+        category,
+    ].map((item) => String(item || '').toLowerCase());
+    return Boolean(body?.applicationId || tokens.some((token) => token.includes('registration') || token.includes('membership')));
+};
+const resolveAccountReference = (body, category) => {
+    if (isRegistrationPayment(body, category) && body?.applicationId) {
+        return `AYEDOSSACCO-${shortApplicationCode(body.applicationId)}`;
+    }
+    return body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+};
 const createTransaction = async (req, res) => {
     try {
         const category = (0, helpers_1.pathToCategory)(req.path);
@@ -38,7 +64,7 @@ const createTransaction = async (req, res) => {
         if (!ipLimitOk) {
             return res.status(429).json({ error: 'Too many requests from this IP.' });
         }
-        const accountReference = body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+        const accountReference = resolveAccountReference(body, category);
         const uniqueReference = body.internalReference || body.internal_reference || body.reference || `${accountReference}-${Date.now()}`;
         const description = body.transactionDesc || body.description || category.slice(0, 13);
         const callbackUrl = (0, helpers_1.getCallbackUrl)(body.callbackUrl || body.CallBackURL);

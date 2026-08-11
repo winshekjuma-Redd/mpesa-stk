@@ -6,6 +6,33 @@ import { formatPhone, getCallbackUrl, pathToCategory } from '../utils/helpers';
 import { rateLimit } from '../services/rateLimitStore';
 import { logger } from '../middleware/logger';
 
+const shortApplicationCode = (value: unknown) => {
+  const raw = String(value || '');
+  const digits = raw.replace(/\D/g, '');
+  if (digits) return digits.slice(-5);
+  let hash = 0;
+  for (const char of raw) hash = ((hash * 31) + char.charCodeAt(0)) % 100000;
+  return String(hash || 1).padStart(5, '0');
+};
+
+const isRegistrationPayment = (body: any, category: string) => {
+  const tokens = [
+    body?.paymentCategory,
+    body?.category,
+    body?.type,
+    body?.transactionType,
+    category,
+  ].map((item) => String(item || '').toLowerCase());
+  return Boolean(body?.applicationId || tokens.some((token) => token.includes('registration') || token.includes('membership')));
+};
+
+const resolveAccountReference = (body: any, category: string) => {
+  if (isRegistrationPayment(body, category) && body?.applicationId) {
+    return `AYEDOSSACCO-${shortApplicationCode(body.applicationId)}`;
+  }
+  return body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+};
+
 export const createTransaction = async (req: Request, res: Response) => {
   try {
     const category = pathToCategory(req.path);
@@ -39,7 +66,7 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(429).json({ error: 'Too many requests from this IP.' });
     }
 
-    const accountReference = body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+    const accountReference = resolveAccountReference(body, category);
     const uniqueReference = body.internalReference || body.internal_reference || body.reference || `${accountReference}-${Date.now()}`;
     const description = body.transactionDesc || body.description || category.slice(0, 13);
     const callbackUrl = getCallbackUrl(body.callbackUrl || body.CallBackURL);

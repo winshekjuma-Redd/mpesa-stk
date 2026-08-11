@@ -17,6 +17,7 @@ const MPESA_ENDPOINTS: Record<string, { baseUrl: string; oauthPath: string; stkP
 };
 
 const getMpesaConfig = () => MPESA_ENDPOINTS[env.MPESA_ENVIRONMENT] || MPESA_ENDPOINTS.sandbox;
+const MPESA_HTTP_TIMEOUT_MS = Number(process.env.MPESA_HTTP_TIMEOUT_MS || 45000);
 
 export async function getToken(): Promise<string> {
   if (!env.MPESA_CONSUMER_KEY || !env.MPESA_CONSUMER_SECRET) {
@@ -29,6 +30,7 @@ export async function getToken(): Promise<string> {
   try {
     const response = await axios.get(`${mpesa.baseUrl}${mpesa.oauthPath}`, {
       headers: { Authorization: `Basic ${credentials}` },
+      timeout: MPESA_HTTP_TIMEOUT_MS,
     });
     return response.data.access_token;
   } catch (error: any) {
@@ -68,12 +70,22 @@ export async function stkPush(params: StkPushParams): Promise<any> {
     TransactionDesc: params.description,
   };
 
-  const response = await axios.post(`${mpesa.baseUrl}${mpesa.stkPushPath}`, payload, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const response = await axios.post(`${mpesa.baseUrl}${mpesa.stkPushPath}`, payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: MPESA_HTTP_TIMEOUT_MS,
+    });
 
-  return response.data;
+    return response.data;
+  } catch (error: any) {
+    const detail = error.response?.data || error.message;
+    logger.error('STK push failed', { detail, accountReference: params.accountReference });
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('M-Pesa took too long to accept the phone prompt request');
+    }
+    throw new Error(error.response?.data?.errorMessage || error.response?.data?.ResponseDescription || 'STK Push failed');
+  }
 }

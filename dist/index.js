@@ -96,6 +96,7 @@ const callbackUrl = (request, env, override) => {
         return `${env.WORKER_BASE_URL.replace(/\/$/, '')}/callback`;
     return `${new URL(request.url).origin}/callback`;
 };
+const withTimeout = (env) => AbortSignal.timeout(Number(env.MPESA_HTTP_TIMEOUT_MS || 45000));
 async function getToken(env) {
     if (!env.MPESA_CONSUMER_KEY || !env.MPESA_CONSUMER_SECRET) {
         throw new Error('Missing MPESA_CONSUMER_KEY or MPESA_CONSUMER_SECRET');
@@ -104,6 +105,7 @@ async function getToken(env) {
     const credentials = btoa(`${env.MPESA_CONSUMER_KEY}:${env.MPESA_CONSUMER_SECRET}`);
     const response = await fetch(`${mpesa.baseUrl}${mpesa.oauthPath}`, {
         headers: { authorization: `Basic ${credentials}` },
+        signal: withTimeout(env),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.access_token) {
@@ -137,6 +139,7 @@ async function stkPush(env, params) {
             'content-type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: withTimeout(env),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok)
@@ -295,6 +298,32 @@ async function updateTransaction(env, matchValue, updates) {
         body: JSON.stringify({ fields: encodeFirestoreFields(updates) }),
     });
 }
+const shortApplicationCode = (value) => {
+    const raw = String(value || '');
+    const digits = raw.replace(/\D/g, '');
+    if (digits)
+        return digits.slice(-5);
+    let hash = 0;
+    for (const char of raw)
+        hash = ((hash * 31) + char.charCodeAt(0)) % 100000;
+    return String(hash || 1).padStart(5, '0');
+};
+const isRegistrationPayment = (body, category) => {
+    const tokens = [
+        body?.paymentCategory,
+        body?.category,
+        body?.type,
+        body?.transactionType,
+        category,
+    ].map((item) => String(item || '').toLowerCase());
+    return Boolean(body?.applicationId || tokens.some((token) => token.includes('registration') || token.includes('membership')));
+};
+const resolveAccountReference = (body, category) => {
+    if (isRegistrationPayment(body, category) && body?.applicationId) {
+        return `AYEDOSSACCO-${shortApplicationCode(body.applicationId)}`;
+    }
+    return body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+};
 async function createTransaction(request, env, path, headers) {
     if (env.API_KEY_FOR_BACKEND) {
         const apiKey = request.headers.get('x-api-key') || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
@@ -318,7 +347,7 @@ async function createTransaction(request, env, path, headers) {
     if (!Number.isInteger(amount) || amount <= 0) {
         return json({ error: 'Amount must be a positive integer' }, 400, headers);
     }
-    const accountReference = body.accountReference || body.member_number || body.memberNumber || body.internalReference || `AYEDOSSACCO-${category.slice(0, 6)}-${Date.now().toString().slice(-6)}`;
+    const accountReference = resolveAccountReference(body, category);
     const uniqueReference = body.internalReference || body.internal_reference || body.reference || `${accountReference}-${Date.now()}`;
     const description = body.transactionDesc || body.description || category.slice(0, 13);
     const existingReference = await findTransactionByReference(env, uniqueReference);
